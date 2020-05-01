@@ -1,0 +1,14 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="org.opencv"
+4    android:versionCode="34100"
+5    android:versionName="3.4.10" >
+6
+7    <uses-sdk
+7-->/home/henrique/Documentos/Projeto/MekeMeSee/openCVLibrary3410/src/main/AndroidManifest.xml:7:5-47
+8        android:minSdkVersion="8"
+8-->/home/henrique/Documentos/Projeto/MekeMeSee/openCVLibrary3410/src/main/AndroidManifest.xml:7:5-47
+9        android:targetSdkVersion="26" />
+9-->/home/henrique/Documentos/Projeto/MekeMeSee/openCVLibrary3410/src/main/AndroidManifest.xml:7:15-44
+10
+11</manifest>
