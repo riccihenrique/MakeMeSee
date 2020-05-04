@@ -15,26 +15,33 @@
 
         <com.serenegiant.usb.widget.UVCCameraTextureView
             android:id="@+id/camera_view"
-            android:layout_width="match_parent"
-            android:layout_height="239dp"
+            android:layout_width="876px"
+            android:layout_height="657px"
             android:layout_gravity="center" />
 
         <com.serenegiant.usb.widget.UVCCameraTextureView
             android:id="@+id/camera_view2"
-            android:layout_width="match_parent"
-            android:layout_height="239dp"
+            android:layout_width="876px"
+            android:layout_height="657px"
             android:layout_gravity="center" />
 
-        <ImageView
-            android:id="@+id/imgv"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="216dp"
-            tools:srcCompat="@tools:sample/backgrounds/scenic" />
+            android:layout_height="187dp"
+            android:orientation="horizontal">
 
-        <Button
-            android:id="@+id/btFoto"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Button" />
+            <ImageView
+                android:id="@+id/imgv"
+                android:layout_width="500px"
+                android:layout_height="500px"
+                tools:srcCompat="@tools:sample/backgrounds/scenic" />
+
+            <ImageView
+                android:id="@+id/imgv2"
+                android:layout_width="500px"
+                android:layout_height="500px"
+                tools:srcCompat="@tools:sample/backgrounds/scenic" />
+        </LinearLayout>
+
     </LinearLayout>
 </RelativeLayout>

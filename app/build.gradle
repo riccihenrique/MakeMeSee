@@ -10,6 +10,9 @@ android {
         versionName rootProject.ext.versionNameString
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+    aaptOptions {
+        noCompress "tflite"
+    }
     buildTypes {
         release {
             minifyEnabled false
@@ -40,12 +43,5 @@ dependencies {
 
     implementation project(':libusbcamera')
     implementation project(path: ':openCVLibrary3410')
-}
-
-repositories {
-    jcenter()
-}
-
-dependencies {
-    compile 'org.tensorflow:tensorflow-android:+'
+    implementation('org.tensorflow:tensorflow-lite:0.0.0-nightly')
 }
