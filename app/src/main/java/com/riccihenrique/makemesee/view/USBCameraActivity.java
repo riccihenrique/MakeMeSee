@@ -1,6 +1,12 @@
 package com.riccihenrique.makemesee.view;
 
+import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Matrix;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
 import android.hardware.usb.UsbDevice;
 import android.os.Bundle;
@@ -12,16 +18,25 @@ import android.widget.Toast;
 import com.riccihenrique.makemesee.R;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import com.riccihenrique.makemesee.utils.Stereo;
+
+import com.riccihenrique.makemesee.tflite.Classifier;
+import com.riccihenrique.makemesee.tflite.TFLiteObjectDetectionAPIModel;
+import com.riccihenrique.makemesee.utils.NeuralNetwork;
 import com.serenegiant.usb.CameraDialog;
 import com.serenegiant.usb.USBMonitor;
 import com.serenegiant.usb.UVCCamera;
 import com.serenegiant.usb.widget.CameraViewInterface;
 import com.serenegiant.usb.widget.UVCCameraTextureView;
 
-import org.opencv.android.Utils;
+import org.opencv.android.OpenCVLoader;
 import org.opencv.core.Mat;
 
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -49,6 +64,8 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
     private UVCCameraTextureView mUVCCameraViewRight;
     private Surface mPreviewSurfaceRight;
     private ImageView imgv;
+    private ImageView imgv2;
+    private NeuralNetwork nn;
 
     private int SELECTED_ID = -1;
     private Button btFoto;
@@ -80,40 +97,38 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
 
             final UVCCamera camera = new  UVCCamera();
             final int current_id = SELECTED_ID;
-            EXECUTER.execute(new Runnable() {
-                @Override
-                public void run() {
-                    camera.open(ctrlBlock);
+            EXECUTER.execute(() -> {
+                camera.open(ctrlBlock);
 
-                    if (mCameraLeft == null) {
-                        mCameraLeft = camera;
-                        if (mPreviewSurfaceLeft != null) {
-                            mPreviewSurfaceLeft.release();
-                            mPreviewSurfaceLeft = null;
-                        }
-
-                        final SurfaceTexture st = mUVCCameraViewLeft.getSurfaceTexture();
-                        if (st != null)
-                            mPreviewSurfaceLeft = new Surface(st);
-
-                        mCameraLeft.setPreviewDisplay(mPreviewSurfaceLeft);
-                        mCameraLeft.startPreview();
-                    } else
-
-                    if (mCameraRight == null) {
-                        mCameraRight = camera;
-                        if (mPreviewSurfaceRight != null) {
-                            mPreviewSurfaceRight.release();
-                            mPreviewSurfaceRight = null;
-                        }
-
-                        final SurfaceTexture st = mUVCCameraViewRight.getSurfaceTexture();
-                        if (st != null)
-                            mPreviewSurfaceRight = new Surface(st);
-
-                        mCameraRight.setPreviewDisplay(mPreviewSurfaceRight);
-                        mCameraRight.startPreview();
+                if (mCameraLeft == null) {
+                    mCameraLeft = camera;
+                    if (mPreviewSurfaceLeft != null) {
+                        mPreviewSurfaceLeft.release();
+                        mPreviewSurfaceLeft = null;
                     }
+
+                    final SurfaceTexture st = mUVCCameraViewLeft.getSurfaceTexture();
+                    if (st != null)
+                        mPreviewSurfaceLeft = new Surface(st);
+
+                    mCameraLeft.setPreviewDisplay(mPreviewSurfaceLeft);
+                    mCameraLeft.startPreview();
+                    mCameraLeft.setAutoFocus(false);
+                } else
+
+                if (mCameraRight == null) {
+                    mCameraRight = camera;
+                    if (mPreviewSurfaceRight != null) {
+                        mPreviewSurfaceRight.release();
+                        mPreviewSurfaceRight = null;
+                    }
+
+                    final SurfaceTexture st = mUVCCameraViewRight.getSurfaceTexture();
+                    if (st != null)
+                        mPreviewSurfaceRight = new Surface(st);
+
+                    mCameraRight.setPreviewDisplay(mPreviewSurfaceRight);
+                    mCameraRight.startPreview();
                 }
             });
         }
@@ -150,6 +165,12 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_usbcamera);
 
+        if (!OpenCVLoader.initDebug()) {
+           System.exit(-1);
+        }
+
+        nn = new NeuralNetwork(this);
+
         mUVCCameraViewLeft = (UVCCameraTextureView) findViewById(R.id.camera_view);
         mUVCCameraViewLeft.setAspectRatio(UVCCamera.DEFAULT_PREVIEW_WIDTH / (float)UVCCamera.DEFAULT_PREVIEW_HEIGHT);
 
@@ -157,61 +178,28 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
         mUVCCameraViewRight.setAspectRatio(UVCCamera.DEFAULT_PREVIEW_WIDTH / (float)UVCCamera.DEFAULT_PREVIEW_HEIGHT);
 
         imgv = (ImageView) findViewById(R.id.imgv);
-
-        new Thread() {
-            @Override
-            public void run() {
-                while (true) {
-                    try
-                    {
-                        Mat left = new Mat();
-                        Bitmap bmpleft = mUVCCameraViewLeft.getBitmap().copy(Bitmap.Config.ARGB_8888, true);
-                        Utils.bitmapToMat(bmpleft, left);
-
-                        Mat right = new Mat();
-                        Bitmap bmpright = mUVCCameraViewRight.getBitmap().copy(Bitmap.Config.ARGB_8888, true);
-                        Utils.bitmapToMat(bmpright, right);
-
-                        Mat result = Stereo.getDisparityMap(left, right);
-                        Bitmap res = Bitmap.createBitmap(bmpleft);
-                        Utils.matToBitmap(result, res);
-                        imgv.setImageBitmap(res);
-                    }
-                    catch (Exception e)
-                    {
-                        showShortMsg("Krai, não deu" + e.getMessage());
-                    }
-                }
-            }
-        }.start();
-
-        btFoto = (Button) findViewById(R.id.btFoto);
-        btFoto.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                try
-                {
-                    /*Mat left = new Mat();
-                    Bitmap bmpleft = mUVCCameraViewLeft.getBitmap().copy(Bitmap.Config.ARGB_8888, true);
-                    Utils.bitmapToMat(bmpleft, left);
-
-                    Mat right = new Mat();
-                    Bitmap bmpright = mUVCCameraViewRight.getBitmap().copy(Bitmap.Config.ARGB_8888, true);
-                    Utils.bitmapToMat(bmpright, right);
-
-                    Mat result = Stereo.getDisparityMap(left, right);
-                    Bitmap res = Bitmap.createBitmap(bmpleft);
-                    Utils.matToBitmap(result, res);
-                    imgv.setImageBitmap(res);*/
-                }
-                catch (Exception e)
-                {
-                    showShortMsg("Krai, não deu" + e.getMessage());
-                }
-            }
-        });
+        imgv2 = (ImageView) findViewById(R.id.imgv2);
 
         mUSBMonitor = new USBMonitor(this, mOnDeviceConnectListener);
+
+        Runnable runnable = new Runnable(){
+            public void run() {
+                while (true) {
+                    try {
+                        List<Bitmap> l = nn.recognize(mUVCCameraViewLeft.getBitmap(), mUVCCameraViewRight.getBitmap());
+                        if(l.size() > 1) {
+                            imgv.setImageBitmap(l.get(0));
+                            imgv2.setImageBitmap(l.get(1));
+                        }
+                    }
+                    catch (Exception e) {
+
+                    }
+                }
+            }
+        };
+
+        new Thread(runnable).start();
     }
 
     private void releaseUVCCamera(int id){
@@ -328,4 +316,14 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
             mCameraHelper2.stopPreview();
             isPreview2 = false;*/
         }
+
+
+    public MappedByteBuffer loadModelFile(String fileName) throws IOException {
+        AssetFileDescriptor fileDescriptor =  this.getAssets().openFd(fileName);
+        FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
+        long startOffset = fileDescriptor.getStartOffset();
+        long declaredLength = fileDescriptor.getDeclaredLength();
+        FileChannel fileChannel = inputStream.getChannel();
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
+    }
 }
