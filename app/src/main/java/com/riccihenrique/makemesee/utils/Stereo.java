@@ -1,12 +1,39 @@
 package com.riccihenrique.makemesee.utils;
 
+import android.graphics.Bitmap;
+import android.graphics.RectF;
+
+import com.riccihenrique.makemesee.model.Obstacle;
+
+import org.opencv.android.Utils;
 import org.opencv.calib3d.StereoSGBM;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.imgproc.Imgproc;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class Stereo {
+
+    public static List<Object> getObstavcleDistance(Bitmap bmpleft, Bitmap bmpright, RectF position) {
+        Mat left = new Mat();
+        Mat right = new Mat();
+
+        Utils.bitmapToMat(bmpleft, left);
+        Utils.bitmapToMat(bmpright, right);
+
+        Mat disparity = getDisparityMap(left, right);
+        Bitmap bmpDisparity = Bitmap.createBitmap(bmpleft);
+        Utils.matToBitmap(disparity, bmpDisparity);
+        int a = bmpDisparity.getPixel( (int) position.left + 10, (int) position.top + 10);
+        List<Object> l = new ArrayList<>();
+        l.add(bmpDisparity);
+        l.add(1.40f);
+        return l;
+    }
+
     public static Mat getDisparityMap(Mat imgleft, Mat imgright) {
         Mat left = new Mat();
         Mat right = new Mat();
