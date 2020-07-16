@@ -1,9 +1,10 @@
 package com.riccihenrique.makemesee.utils;
 
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.RectF;
-
-import com.riccihenrique.makemesee.model.Obstacle;
 
 import org.opencv.android.Utils;
 import org.opencv.calib3d.StereoSGBM;
@@ -16,8 +17,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class Stereo {
-
-    public static List<Object> getObstavcleDistance(Bitmap bmpleft, Bitmap bmpright, RectF position) {
+    private static double distance;
+    public static List<Object> getObstacleDistance(Bitmap bmpleft, Bitmap bmpright, RectF position) {
         Mat left = new Mat();
         Mat right = new Mat();
 
@@ -27,14 +28,14 @@ public class Stereo {
         Mat disparity = getDisparityMap(left, right);
         Bitmap bmpDisparity = Bitmap.createBitmap(bmpleft);
         Utils.matToBitmap(disparity, bmpDisparity);
-        int a = bmpDisparity.getPixel( (int) position.left + 10, (int) position.top + 10);
+        bmpDisparity = getDistance(bmpDisparity, position);
         List<Object> l = new ArrayList<>();
         l.add(bmpDisparity);
-        l.add(1.40f);
+        l.add(distance);
         return l;
     }
 
-    public static Mat getDisparityMap(Mat imgleft, Mat imgright) {
+    private static Mat getDisparityMap(Mat imgleft, Mat imgright) {
         Mat left = new Mat();
         Mat right = new Mat();
 
@@ -62,8 +63,41 @@ public class Stereo {
         stereo.compute(left, right, disparity);
         Core.normalize(disparity, disparity, 0, 255, Core.NORM_MINMAX);
         disparity.convertTo(disparity, CvType.CV_8UC1);
-        Imgproc.applyColorMap(disparity, disparity, Imgproc.COLORMAP_JET);
-
         return disparity;
+    }
+
+    private static Bitmap getDistance(Bitmap disparit, RectF rect) {
+        int [] colors = new int[256];
+        float x, y, width, height;
+        x = rect.left < 0 ? 0 : rect.left;
+        y = rect.top < 0 ? 0 : rect.top;
+        width = rect.right > disparit.getWidth() ? disparit.getWidth() : rect.right;
+        height = rect.bottom > disparit.getHeight() ? disparit.getHeight() : rect.bottom;
+
+        for(; y < height; y++)
+            for(; x < width; x++) {
+                colors[Color.red(disparit.getPixel((int) x, (int) y))]++;
+            }
+        int s = 0, c = 0;
+        int i = 50;
+        while(i < 256) {
+            if(colors[i] > 1) {
+                s += i;
+                c++;
+            }
+            i++;
+        }
+
+        Canvas canvas = new Canvas(disparit);
+        Paint paint = new Paint();
+        paint.setColor(Color.RED);
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(1.0f);
+
+        canvas.drawRect(rect, paint);
+        double result = s / c;
+        distance = 0.000716042 * Math.pow(result, 2) - 0.236778 * result + 21.4951;
+
+        return disparit;
     }
 }

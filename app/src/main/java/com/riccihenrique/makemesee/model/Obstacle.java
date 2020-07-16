@@ -2,10 +2,13 @@ package com.riccihenrique.makemesee.model;
 
 import android.graphics.RectF;
 
+import java.math.RoundingMode;
+import java.text.DecimalFormat;
+
 public class Obstacle {
     private String description;
     private RectF location;
-    private float distance;
+    private double distance;
     private String name;
     private float confidence;
 
@@ -31,11 +34,11 @@ public class Obstacle {
         this.location = location;
     }
 
-    public float getDistance() {
+    public double getDistance() {
         return distance;
     }
 
-    public void setDistance(float distance) {
+    public void setDistance(double distance) {
         this.distance = distance;
     }
 
@@ -57,6 +60,8 @@ public class Obstacle {
 
     @Override
     public String toString() {
-        return description.equals("person") ? name + " está se aproximando" : description + " a " + distance + " metros";
+        DecimalFormat decimalFormat = new DecimalFormat("#,#0.0");
+        decimalFormat.setRoundingMode(RoundingMode.DOWN);
+        return description.equals("person") ? name + " está se aproximando" : description + " a " + decimalFormat.format(distance) + " metros";
     }
 }

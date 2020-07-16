@@ -1,17 +1,15 @@
 package com.riccihenrique.makemesee.utils;
 
 import android.content.Context;
-import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.speech.tts.TextToSpeech;
+import android.widget.Toast;
 
 import com.riccihenrique.makemesee.model.Obstacle;
-import com.riccihenrique.makemesee.tflite.Classifier;
-import com.riccihenrique.makemesee.tflite.TFLiteObjectDetectionAPIModel;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -20,7 +18,7 @@ import java.util.Locale;
 
 public class NeuralNetwork {
 
-    private final float MINIMUM_CONFIDENCE = 0.5f;
+    private final float MINIMUM_CONFIDENCE = 0.6f;
     private static final boolean MAINTAIN_ASPECT = false;
     private static final int INPUT_SIZE = 300;
     private static final boolean IS_QUANTIZED = true;
@@ -37,9 +35,10 @@ public class NeuralNetwork {
                 textSpeech.setLanguage(Locale.getDefault());
             }
         });
+        textSpeech.setSpeechRate(2.9f);
 
         try {
-            classifier = TFLiteObjectDetectionAPIModel.create(
+            classifier = ObjectDetectorModel.create(
                     context.getAssets(),
                     MODEL_FILE,
                     LABELS_FILE,
@@ -54,7 +53,6 @@ public class NeuralNetwork {
     public List<Bitmap> recognize(Bitmap left, Bitmap right) {
         List<Bitmap> lb = new ArrayList<>();
         try {
-
             Bitmap croppedFrame = Bitmap.createScaledBitmap(left, INPUT_SIZE, INPUT_SIZE, false);
             final List<Classifier.Recognition> results = classifier.recognizeImage(croppedFrame);
 
@@ -74,15 +72,17 @@ public class NeuralNetwork {
                 final RectF location = result.getLocation();
                 if (location != null && result.getConfidence() >= MINIMUM_CONFIDENCE) {
                     Obstacle obstacle = new Obstacle(result.getTitle(), result.getLocation(), result.getConfidence());
-                    canvas.drawRect(location, paint);
 
-                    l = Stereo.getObstavcleDistance(croppedFrame, Bitmap.createScaledBitmap(right, INPUT_SIZE, INPUT_SIZE, false), location);
-                    obstacle.setDistance((float) l.get(1));
+
+                    if(!obstacle.getDescription().equals("pessoa")) {
+                        l = Stereo.getObstacleDistance(croppedFrame, Bitmap.createScaledBitmap(right, INPUT_SIZE, INPUT_SIZE, false), location);
+                        obstacle.setDistance((double) l.get(1));
+                    }
+                    canvas.drawRect(location, paint);
                     canvas.drawText(obstacle.toString(), location.left, location.top - 5, paintText);
                     result.setLocation(location);
 
-                    textSpeech.speak(obstacle.toString(),TextToSpeech.QUEUE_ADD,null);
-
+                    textSpeech.speak(obstacle.toString(), TextToSpeech.QUEUE_ADD,null);
                     obstaclesRecognized.add(obstacle);
                 }
             }
@@ -92,8 +92,7 @@ public class NeuralNetwork {
             return lb;
         }
         catch (Exception e) {
-           // showShortMsg("Krai, não deu" + e.getMessage());
-
+            Toast.makeText(null, "Krai, não deu. " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
         return lb;
     }

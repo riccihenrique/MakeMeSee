@@ -1,50 +1,40 @@
 package com.riccihenrique.makemesee.view;
 
-import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Matrix;
-import android.graphics.Paint;
-import android.graphics.RectF;
 import android.graphics.SurfaceTexture;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.hardware.usb.UsbDevice;
 import android.os.Bundle;
 import android.view.Surface;
-import android.view.View;
-import android.widget.Button;
 import android.widget.ImageView;
+import android.widget.TextView;
 import android.widget.Toast;
-import com.riccihenrique.makemesee.R;
+
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
-import com.riccihenrique.makemesee.tflite.Classifier;
-import com.riccihenrique.makemesee.tflite.TFLiteObjectDetectionAPIModel;
 import com.riccihenrique.makemesee.utils.NeuralNetwork;
 import com.serenegiant.usb.CameraDialog;
 import com.serenegiant.usb.USBMonitor;
 import com.serenegiant.usb.UVCCamera;
 import com.serenegiant.usb.widget.CameraViewInterface;
 import com.serenegiant.usb.widget.UVCCameraTextureView;
+import com.riccihenrique.makemesee.R;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
 import org.opencv.android.OpenCVLoader;
-import org.opencv.core.Mat;
 
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-public class USBCameraActivity extends AppCompatActivity implements CameraDialog.CameraDialogParent, CameraViewInterface.Callback {
-    private static final String TAG = "Debug";
-    private static boolean DEBUG = true;
-
+public class USBCameraActivity extends AppCompatActivity implements CameraDialog.CameraDialogParent, CameraViewInterface.Callback, SensorEventListener {
     // for thread pool
     private static final int CORE_POOL_SIZE = 1;		// initial/minimum threads
     private static final int MAX_POOL_SIZE = 4;			// maximum threads
@@ -63,32 +53,35 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
     private UVCCamera mCameraRight = null;
     private UVCCameraTextureView mUVCCameraViewRight;
     private Surface mPreviewSurfaceRight;
+
+    private double[][] matRight, matLeft;
+    private double[] distRight, dirtLeft;
+
     private ImageView imgv;
     private ImageView imgv2;
     private NeuralNetwork nn;
 
-    private int SELECTED_ID = -1;
-    private Button btFoto;
+    private float[] mGravity;
+    private float mAccel;
+    private float mAccelCurrent;
+    private float mAccelLast;
+
+    private SensorManager sensorManager;
+    private Sensor sensorStep;
+    private boolean canDetect = true;
 
     private USBMonitor.OnDeviceConnectListener mOnDeviceConnectListener = new USBMonitor.OnDeviceConnectListener() {
         @Override
         public void onAttach(UsbDevice device) {
             if(mCameraLeft == null)
-            {
                 mUSBMonitor.requestPermission(mUSBMonitor.getDeviceList().get(0));
-                SELECTED_ID = 0;
-            }
 
             else if(mCameraRight == null)
-            {
                 mUSBMonitor.requestPermission(mUSBMonitor.getDeviceList().get(0));
-                SELECTED_ID = 1;
-            }
         }
 
         @Override
         public void onDettach(UsbDevice device) {
-
         }
 
         @Override
@@ -96,7 +89,6 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
             if(mCameraLeft != null && mCameraRight != null) return;
 
             final UVCCamera camera = new  UVCCamera();
-            final int current_id = SELECTED_ID;
             EXECUTER.execute(() -> {
                 camera.open(ctrlBlock);
 
@@ -156,7 +148,6 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
 
         @Override
         public void onCancel(UsbDevice device) {
-
         }
     };
 
@@ -165,37 +156,43 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_usbcamera);
 
-        if (!OpenCVLoader.initDebug()) {
+        if (!OpenCVLoader.initDebug())
            System.exit(-1);
-        }
 
         nn = new NeuralNetwork(this);
 
-        mUVCCameraViewLeft = (UVCCameraTextureView) findViewById(R.id.camera_view);
+        sensorManager = (SensorManager)getSystemService(SENSOR_SERVICE);
+        sensorStep = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        mAccel = 0.00f;
+        mAccelCurrent = SensorManager.GRAVITY_EARTH;
+        mAccelLast = SensorManager.GRAVITY_EARTH;
+
+        mUVCCameraViewLeft = findViewById(R.id.camera_view);
         mUVCCameraViewLeft.setAspectRatio(UVCCamera.DEFAULT_PREVIEW_WIDTH / (float)UVCCamera.DEFAULT_PREVIEW_HEIGHT);
 
-        mUVCCameraViewRight = (UVCCameraTextureView) findViewById(R.id.camera_view2);
+        mUVCCameraViewRight = findViewById(R.id.camera_view2);
         mUVCCameraViewRight.setAspectRatio(UVCCamera.DEFAULT_PREVIEW_WIDTH / (float)UVCCamera.DEFAULT_PREVIEW_HEIGHT);
 
-        imgv = (ImageView) findViewById(R.id.imgv);
-        imgv2 = (ImageView) findViewById(R.id.imgv2);
+        imgv = findViewById(R.id.imgv);
+        imgv2 = findViewById(R.id.imgv2);
 
         mUSBMonitor = new USBMonitor(this, mOnDeviceConnectListener);
 
-        Runnable runnable = new Runnable(){
-            public void run() {
-                while (true) {
-                    try {
+        Runnable runnable = () -> {
+            while (true) {
+                try {
+                    if(/*canDetect*/mCameraRight != null) {
+
                         List<Bitmap> l = nn.recognize(mUVCCameraViewLeft.getBitmap(), mUVCCameraViewRight.getBitmap());
                         if(l.size() > 1) {
                             imgv.setImageBitmap(l.get(0));
                             imgv2.setImageBitmap(l.get(1));
                         }
-                    }
-                    catch (Exception e) {
-
+                        Thread.sleep(2000);
+                        canDetect = false;
                     }
                 }
+                catch (Exception e) { System.out.println(e.getMessage()); }
             }
         };
 
@@ -246,17 +243,15 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
 
         if (mCameraRight != null)
             mCameraRight.startPreview();
+
+        sensorManager.registerListener(this, sensorStep, SensorManager.SENSOR_DELAY_NORMAL);
     }
 
     @Override
     protected void onStop() {
         super.onStop();
         // step.3 unregister USB event broadcast
-        /*if (mCameraHelper != null)
-            mCameraHelper.unregisterUSB();
-
-        if (mCameraHelper2 != null)
-            mCameraHelper2.unregisterUSB();*/
+        sensorManager.unregisterListener(this, sensorStep);
     }
 
     @Override
@@ -317,13 +312,41 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
             isPreview2 = false;*/
         }
 
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+            if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER){
+                mGravity = event.values.clone();
+                // Shake detection
+                float x = mGravity[0];
+                float y = mGravity[1];
+                float z = mGravity[2];
+                mAccelLast = mAccelCurrent;
+                mAccelCurrent = (float) Math.sqrt(x*x + y*y + z*z);
+                float delta = mAccelCurrent - mAccelLast;
+                mAccel = mAccel * 0.9f + delta;
+                // Make this higher or lower according to how much
+                // motion you want to detect
+                if(mAccel > 1){
+                    /*Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+                    v.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE));*/
+                    canDetect = true;
+                }
+            }
+    }
 
-    public MappedByteBuffer loadModelFile(String fileName) throws IOException {
-        AssetFileDescriptor fileDescriptor =  this.getAssets().openFd(fileName);
-        FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
-        long startOffset = fileDescriptor.getStartOffset();
-        long declaredLength = fileDescriptor.getDeclaredLength();
-        FileChannel fileChannel = inputStream.getChannel();
-        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+    }
+
+    private void readJson() {
+        String leftFile = "left.json";
+        String rightFile = "right.json";
+        try {
+            JSONObject reader = new JSONObject(leftFile);
+            JSONArray mat = reader.getJSONArray("matrix");
+        } catch (JSONException e) {
+            e.printStackTrace();
+        }
     }
 }

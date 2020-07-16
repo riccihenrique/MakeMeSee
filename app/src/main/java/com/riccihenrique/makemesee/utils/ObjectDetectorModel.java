@@ -13,15 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-package com.riccihenrique.makemesee.tflite;
+package com.riccihenrique.makemesee.utils;
 
 import android.content.res.AssetFileDescriptor;
 import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Trace;
-
-import com.riccihenrique.makemesee.env.Logger;
 
 import org.tensorflow.lite.Interpreter;
 
@@ -49,16 +47,14 @@ import java.util.Vector;
  * - https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/detection_model_zoo.md
  * - https://github.com/tensorflow/models/blob/master/research/object_detection/g3doc/running_on_mobile_tensorflowlite.md#running-our-model-on-android
  */
-public class TFLiteObjectDetectionAPIModel implements Classifier {
-  private static final Logger LOGGER = new Logger();
-
+public class ObjectDetectorModel implements Classifier {
   // Only return this many results.
   private static final int NUM_DETECTIONS = 10;
   // Float model
   private static final float IMAGE_MEAN = 128.0f;
   private static final float IMAGE_STD = 128.0f;
   // Number of threads in the java app
-  private static final int NUM_THREADS = 4;
+  private static final int NUM_THREADS = 1;
   private boolean isModelQuantized;
   // Config values.
   private int inputSize;
@@ -82,7 +78,7 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
   private Interpreter tfLite;
 
-  private TFLiteObjectDetectionAPIModel() {}
+  private ObjectDetectorModel() {}
 
   /** Memory-map the model file in Assets. */
   private static MappedByteBuffer loadModelFile(AssetManager assets, String modelFilename)
@@ -111,14 +107,13 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
       final int inputSize,
       final boolean isQuantized)
       throws IOException {
-    final TFLiteObjectDetectionAPIModel d = new TFLiteObjectDetectionAPIModel();
+    final ObjectDetectorModel d = new ObjectDetectorModel();
 
     String actualFilename = labelFilename.split("file:///android_asset/")[1];
     InputStream labelsInput = assetManager.open(actualFilename);
     BufferedReader br = new BufferedReader(new InputStreamReader(labelsInput));
     String line;
     while ((line = br.readLine()) != null) {
-      LOGGER.w(line);
       d.labels.add(line);
     }
     br.close();
