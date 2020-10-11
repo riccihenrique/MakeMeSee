@@ -9,7 +9,9 @@ import android.graphics.RectF;
 import android.speech.tts.TextToSpeech;
 import android.widget.Toast;
 
+import com.riccihenrique.makemesee.dlib.VisionDetRet;
 import com.riccihenrique.makemesee.model.Obstacle;
+import com.riccihenrique.makemesee.model.Person;
 
 import java.util.ArrayList;
 import java.util.LinkedList;
@@ -67,16 +69,20 @@ public class NeuralNetwork {
             paintText.setStrokeWidth(1.0f);
 
             List<Object> l = new ArrayList<>();
+            Person p = new Person();
             final List<Obstacle> obstaclesRecognized = new LinkedList<Obstacle>();
             for (final Classifier.Recognition result : results) {
                 final RectF location = result.getLocation();
                 if (location != null && result.getConfidence() >= MINIMUM_CONFIDENCE) {
                     Obstacle obstacle = new Obstacle(result.getTitle(), result.getLocation(), result.getConfidence());
 
-
-                    if(!obstacle.getDescription().equals("pessoa")) {
+                    if(!obstacle.getDescription().toLowerCase().equals("pessoa")) {
                         l = Stereo.getObstacleDistance(croppedFrame, Bitmap.createScaledBitmap(right, INPUT_SIZE, INPUT_SIZE, false), location);
                         obstacle.setDistance((double) l.get(1));
+                    }
+                    else {
+                        List<VisionDetRet> personRecognized = p.detectPeople(Bitmap.createBitmap(croppedFrame, (int) location.left, (int)location.top, (int)(location.left + location.right),(int)(location.top + location.bottom)));
+                        obstacle.setName(personRecognized.get(0).getName().toString());
                     }
                     canvas.drawRect(location, paint);
                     canvas.drawText(obstacle.toString(), location.left, location.top - 5, paintText);

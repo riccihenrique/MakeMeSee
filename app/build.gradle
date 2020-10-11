@@ -9,6 +9,15 @@ android {
         versionCode 1
         versionName rootProject.ext.versionNameString
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        externalNativeBuild {
+            cmake {
+                arguments "-DCMAKE_BUILD_TYPE=Release"
+                cppFlags "-std=c++11 -frtti -fexceptions"
+            }
+        }
+    }
+    packagingOptions {
+        pickFirst 'lib/x86/libopencv_java3.so'
     }
     aaptOptions {
         noCompress "tflite"
@@ -19,6 +28,11 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+        }
+    }
     // solving com.android.tools.r8.CompilationFailedException: Compilation failed to complete
     compileOptions {
         sourceCompatibility rootProject.ext.javaSourceCompatibility
@@ -26,11 +40,10 @@ android {
     }
     sourceSets {
         main {
-            jni {
-                srcDirs 'src/main/jni', 'src/main/jnilLibs/'
-            }
+            jniLibs.srcDirs = ["libs"]
         }
     }
+    ndkVersion '21.3.6528147'
 }
 
 dependencies {

@@ -181,7 +181,7 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
         Runnable runnable = () -> {
             while (true) {
                 try {
-                    if(/*canDetect*/mCameraRight != null) {
+                    if(/*canDetect*/mCameraRight != null || mCameraLeft != null) {
 
                         List<Bitmap> l = nn.recognize(mUVCCameraViewLeft.getBitmap(), mUVCCameraViewRight.getBitmap());
                         if(l.size() > 1) {
