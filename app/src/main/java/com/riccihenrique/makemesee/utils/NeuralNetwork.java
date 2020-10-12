@@ -7,7 +7,7 @@ import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.speech.tts.TextToSpeech;
-import android.widget.Toast;
+import android.util.Log;
 
 import com.riccihenrique.makemesee.dlib.VisionDetRet;
 import com.riccihenrique.makemesee.model.Obstacle;
@@ -21,7 +21,6 @@ import java.util.Locale;
 public class NeuralNetwork {
 
     private final float MINIMUM_CONFIDENCE = 0.6f;
-    private static final boolean MAINTAIN_ASPECT = false;
     private static final int INPUT_SIZE = 300;
     private static final boolean IS_QUANTIZED = true;
     private static final String MODEL_FILE = "detect.tflite";
@@ -30,16 +29,13 @@ public class NeuralNetwork {
 
     private Classifier classifier;
 
+    private Person p;
     public NeuralNetwork(Context context) {
-        textSpeech = new TextToSpeech(context, new TextToSpeech.OnInitListener() {
-            @Override
-            public void onInit(int status) {
-                textSpeech.setLanguage(Locale.getDefault());
-            }
-        });
+        textSpeech = new TextToSpeech(context, status -> textSpeech.setLanguage(Locale.getDefault()));
         textSpeech.setSpeechRate(2.9f);
 
         try {
+            p = new Person();
             classifier = ObjectDetectorModel.create(
                     context.getAssets(),
                     MODEL_FILE,
@@ -48,7 +44,7 @@ public class NeuralNetwork {
                     IS_QUANTIZED);
         }
         catch (Exception e) {
-            //showShortMsg("Ocorreu um erro ao ler o modelinho: " + e.getMessage());
+            Log.e("LOAD MODEL/PERSON", e.getMessage());
         }
     }
 
@@ -56,10 +52,13 @@ public class NeuralNetwork {
         List<Bitmap> lb = new ArrayList<>();
         try {
             Bitmap croppedFrame = Bitmap.createScaledBitmap(left, INPUT_SIZE, INPUT_SIZE, false);
-            final List<Classifier.Recognition> results = classifier.recognizeImage(croppedFrame);
+            long startTime = System.currentTimeMillis();
+            List<Classifier.Recognition> results = classifier.recognizeImage(croppedFrame);
+            long endTime = System.currentTimeMillis();
+            Log.d("RECONHECIMENTO OBSTACULOS", (endTime - startTime) + "");
 
             Canvas canvas = new Canvas(croppedFrame);
-            final Paint paint = new Paint();
+            Paint paint = new Paint();
             paint.setColor(Color.RED);
             paint.setStyle(Paint.Style.STROKE);
             paint.setStrokeWidth(2.0f);
@@ -69,36 +68,46 @@ public class NeuralNetwork {
             paintText.setStrokeWidth(1.0f);
 
             List<Object> l = new ArrayList<>();
-            Person p = new Person();
-            final List<Obstacle> obstaclesRecognized = new LinkedList<Obstacle>();
-            for (final Classifier.Recognition result : results) {
-                final RectF location = result.getLocation();
+
+            for (Classifier.Recognition result : results) {
+                RectF location = result.getLocation();
                 if (location != null && result.getConfidence() >= MINIMUM_CONFIDENCE) {
                     Obstacle obstacle = new Obstacle(result.getTitle(), result.getLocation(), result.getConfidence());
 
                     if(!obstacle.getDescription().toLowerCase().equals("pessoa")) {
-                        l = Stereo.getObstacleDistance(croppedFrame, Bitmap.createScaledBitmap(right, INPUT_SIZE, INPUT_SIZE, false), location);
-                        obstacle.setDistance((double) l.get(1));
+                        //l = Stereo.getObstacleDistance(croppedFrame, Bitmap.createScaledBitmap(right, INPUT_SIZE, INPUT_SIZE, false), location);
+                        //obstacle.setDistance((double) l.get(1));
                     }
                     else {
-                        List<VisionDetRet> personRecognized = p.detectPeople(Bitmap.createBitmap(croppedFrame, (int) location.left, (int)location.top, (int)(location.left + location.right),(int)(location.top + location.bottom)));
+                        int x, y, w, h;
+                        x = (int) location.left;
+                        y = (int) location.top;
+                        w = (int) (location.right - location.left);
+                        h = (int) (location.bottom - location.top);
+
+                        x = x > croppedFrame.getWidth() ? croppedFrame.getWidth() : (x < 0 ? 0 : x);
+                        y = y > croppedFrame.getHeight() ? croppedFrame.getHeight() : (y < 0 ? 0 : y);
+                        w = w > croppedFrame.getWidth() ? croppedFrame.getWidth() : (w < 0 ? 0 : w);
+                        h = h > croppedFrame.getHeight() ? croppedFrame.getHeight() : (h < 0 ? 0 : h);
+
+                        List<VisionDetRet> personRecognized = p.detectPeople(Bitmap.createBitmap(croppedFrame, x, y, w, h));
                         obstacle.setName(personRecognized.get(0).getName().toString());
                     }
+
                     canvas.drawRect(location, paint);
                     canvas.drawText(obstacle.toString(), location.left, location.top - 5, paintText);
                     result.setLocation(location);
-
                     textSpeech.speak(obstacle.toString(), TextToSpeech.QUEUE_ADD,null);
-                    obstaclesRecognized.add(obstacle);
                 }
             }
+
             lb.add(croppedFrame);
             lb.add((Bitmap) (l.size() > 0 ? l.get(0) : croppedFrame));
 
             return lb;
         }
         catch (Exception e) {
-            Toast.makeText(null, "Krai, não deu. " + e.getMessage(), Toast.LENGTH_SHORT).show();
+            Log.e("NeuralNetwork", e.getMessage());
         }
         return lb;
     }

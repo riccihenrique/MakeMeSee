@@ -200,7 +200,7 @@ public class UVCCamera {
 			sb.append("调用nativeConnect返回值："+result);
 //			long id_camera, int venderId, int productId, int fileDescriptor, int busNum, int devAddr, String usbfs
 		} catch (final Exception e) {
-			Log.w(TAG, e);
+			Log.e(TAG, e.getMessage());
 			for(int i = 0; i< e.getStackTrace().length; i++){
 				sb.append(e.getStackTrace()[i].toString());
 				sb.append("\n");
@@ -262,7 +262,6 @@ public class UVCCamera {
 		mCurrentBandwidthFactor = 0;
 		mSupportedSize = null;
 		mCurrentSizeList = null;
-    	if (DEBUG) Log.v(TAG, "close:finished");
     }
 
 	public UsbDevice getDevice() {
@@ -880,7 +879,6 @@ public class UVCCamera {
  		   final float range = Math.abs(mZoomMax - mZoomMin);
  		   if (range > 0) {
  			   final int z = (int)(zoom / 100.f * range) + mZoomMin;
-// 			   Log.d(TAG, "setZoom:zoom=" + zoom + " ,value=" + z);
  			   nativeSetZoom(mNativePtr, z);
  		   }
     	}
@@ -937,20 +935,6 @@ public class UVCCamera {
 	    	    	nativeUpdateWhiteBlanceLimit(mNativePtr);
 	    	    	nativeUpdateFocusLimit(mNativePtr);
     	    	}
-    	    	if (DEBUG) {
-					dumpControls(mControlSupports);
-					dumpProc(mProcSupports);
-					Log.v(TAG, String.format("Brightness:min=%d,max=%d,def=%d", mBrightnessMin, mBrightnessMax, mBrightnessDef));
-					Log.v(TAG, String.format("Contrast:min=%d,max=%d,def=%d", mContrastMin, mContrastMax, mContrastDef));
-					Log.v(TAG, String.format("Sharpness:min=%d,max=%d,def=%d", mSharpnessMin, mSharpnessMax, mSharpnessDef));
-					Log.v(TAG, String.format("Gain:min=%d,max=%d,def=%d", mGainMin, mGainMax, mGainDef));
-					Log.v(TAG, String.format("Gamma:min=%d,max=%d,def=%d", mGammaMin, mGammaMax, mGammaDef));
-					Log.v(TAG, String.format("Saturation:min=%d,max=%d,def=%d", mSaturationMin, mSaturationMax, mSaturationDef));
-					Log.v(TAG, String.format("Hue:min=%d,max=%d,def=%d", mHueMin, mHueMax, mHueDef));
-					Log.v(TAG, String.format("Zoom:min=%d,max=%d,def=%d", mZoomMin, mZoomMax, mZoomDef));
-					Log.v(TAG, String.format("WhiteBlance:min=%d,max=%d,def=%d", mWhiteBlanceMin, mWhiteBlanceMax, mWhiteBlanceDef));
-					Log.v(TAG, String.format("Focus:min=%d,max=%d,def=%d", mFocusMin, mFocusMax, mFocusDef));
-				}
 			}
     	} else {
     		mControlSupports = mProcSupports = 0;
@@ -1011,20 +995,6 @@ public class UVCCamera {
 		"D23: Reserved. Set to zero",
 	};
 
-    private static final void dumpControls(final long controlSupports) {
-    	Log.i(TAG, String.format("controlSupports=%x", controlSupports));
-    	for (int i = 0; i < SUPPORTS_CTRL.length; i++) {
-    		Log.i(TAG, SUPPORTS_CTRL[i] + ((controlSupports & (0x1 << i)) != 0 ? "=enabled" : "=disabled"));
-    	}
-    }
-
-	private static final void dumpProc(final long procSupports) {
-    	Log.i(TAG, String.format("procSupports=%x", procSupports));
-    	for (int i = 0; i < SUPPORTS_PROC.length; i++) {
-    		Log.i(TAG, SUPPORTS_PROC[i] + ((procSupports & (0x1 << i)) != 0 ? "=enabled" : "=disabled"));
-    	}
-    }
-
 	private final String getUSBFSName(final UsbControlBlock ctrlBlock) {
 		String result = null;
 		final String name = ctrlBlock.getDeviceName();
@@ -1036,7 +1006,6 @@ public class UVCCamera {
 			result = sb.toString();
 		}
 		if (TextUtils.isEmpty(result)) {
-			Log.w(TAG, "failed to get USBFS path, try to use default path:" + name);
 			result = DEFAULT_USBFS;
 		}
 		return result;

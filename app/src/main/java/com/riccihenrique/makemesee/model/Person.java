@@ -16,10 +16,13 @@ public class Person {
     }
     public List<VisionDetRet> detectPeople(Bitmap bmp) {
         long startTime = System.currentTimeMillis();
-        List<VisionDetRet> results;
-        results = mFaceDet.detect(bmp);
+        List<VisionDetRet> results = null;
+        try {
+            results = mFaceDet.detect(bmp);
+        }
+        catch (Exception e) {Log.e("PERSON", e.getMessage());}
         long endTime = System.currentTimeMillis();
-        Log.d("TESTE", (startTime - endTime) + "");
+        Log.d("RECONHEIMENTO FACIAL", (endTime - startTime) + "");
         return results;
     }
 }
