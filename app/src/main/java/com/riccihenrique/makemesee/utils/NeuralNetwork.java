@@ -68,6 +68,7 @@ public class NeuralNetwork {
             paintText.setStrokeWidth(1.0f);
 
             List<Object> l = new ArrayList<>();
+            List<Obstacle> obstaclesRecognized = new ArrayList<>();
 
             for (Classifier.Recognition result : results) {
                 RectF location = result.getLocation();
@@ -97,8 +98,16 @@ public class NeuralNetwork {
                     canvas.drawRect(location, paint);
                     canvas.drawText(obstacle.toString(), location.left, location.top - 5, paintText);
                     result.setLocation(location);
-                    textSpeech.speak(obstacle.toString(), TextToSpeech.QUEUE_ADD,null);
+
+                    if(obstacle.getDistance() <= 8)
+                        obstaclesRecognized.add(obstacle);
                 }
+            }
+
+            obstaclesRecognized.sort((obstacle, t1) -> (int) (obstacle.getDistance() - t1.getDistance()));
+
+            for(Obstacle obs : obstaclesRecognized) {
+                textSpeech.speak(obs.toString(), TextToSpeech.QUEUE_ADD,null);
             }
 
             lb.add(croppedFrame);

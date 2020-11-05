@@ -377,7 +377,7 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
         }
     }
 
-    private void releaseUVCCamera(int id){
+    private void releaseUVCCamera(int id) {
         if(id == 0 || id == 2){
             mCameraLeft.close();
 
