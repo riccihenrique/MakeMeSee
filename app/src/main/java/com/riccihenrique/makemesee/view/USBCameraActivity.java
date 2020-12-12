@@ -13,10 +13,10 @@ import android.os.Bundle;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.speech.tts.TextToSpeech;
 import android.util.Log;
 import android.view.Surface;
 import android.widget.ImageView;
-import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
@@ -45,13 +45,16 @@ import org.opencv.objdetect.CascadeClassifier;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
+import java.math.RoundingMode;
+import java.text.DecimalFormat;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-public class USBCameraActivity extends AppCompatActivity implements CameraDialog.CameraDialogParent, CameraViewInterface.Callback, SensorEventListener {
+public class USBCameraActivity extends AppCompatActivity implements CameraDialog.CameraDialogParent, CameraViewInterface.Callback, SensorEventListener, TextToSpeech.OnInitListener{
     // for thread pool
     private static final int CORE_POOL_SIZE = 1;		// initial/minimum threads
     private static final int MAX_POOL_SIZE = 4;			// maximum threads
@@ -60,7 +63,6 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
             = new ThreadPoolExecutor(CORE_POOL_SIZE, MAX_POOL_SIZE, KEEP_ALIVE_TIME,
             TimeUnit.SECONDS, new LinkedBlockingQueue<Runnable>());
 
-    // for accessing USB and USB camera
     private USBMonitor mUSBMonitor;
 
     private UVCCamera mCameraLeft = null;
@@ -70,9 +72,6 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
     private UVCCamera mCameraRight = null;
     private UVCCameraTextureView mUVCCameraViewRight;
     private Surface mPreviewSurfaceRight;
-
-    private double[][] matRight, matLeft;
-    private double[] distRight, dirtLeft;
 
     private SpeechRecognizer speechRecognizer;
     final Intent speechRecognizerIntent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
@@ -86,9 +85,31 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
     private float mAccelCurrent;
     private float mAccelLast;
 
+    private int lastStep = 0;
+    private int actualStep = 0;
+    private boolean canDetect = true;
+
     private SensorManager sensorManager;
     private Sensor sensorStep;
-    private boolean canDetect = true;
+    private boolean spoke1 = false;
+    private boolean spoke2 = false;
+
+    private int stepCount;
+    private boolean toggle;
+    private double prevY;
+    private double threshold = 0.8;
+    private boolean ignore;
+    private int countdown;
+    // Gravity for accelerometer data
+    private float[] gravity = new float[3];
+    // smoothed values
+    private float[] smoothed = new float[3];
+    // sensor gravity
+    private Sensor sensorGravity;
+    private double bearing = 0;
+    private boolean canDetectVoice = false;
+
+    private TextToSpeech txt2Speech;
 
     private USBMonitor.OnDeviceConnectListener mOnDeviceConnectListener;
 
@@ -96,11 +117,11 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_usbcamera);
-
         if (!OpenCVLoader.initDebug())
-           System.exit(-1);
+            System.exit(-1);
 
-        nn = new NeuralNetwork(this);
+        initText2Speech();
+        nn = new NeuralNetwork(this, txt2Speech);
 
         initUsbMonitor();
         initAcceleratorSensor();
@@ -114,11 +135,26 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
         mOnDeviceConnectListener = new USBMonitor.OnDeviceConnectListener() {
             @Override
             public void onAttach(UsbDevice device) {
-                if(mCameraLeft == null)
-                    mUSBMonitor.requestPermission(mUSBMonitor.getDeviceList().get(0));
+                if(mCameraLeft == null) {
+                    if(mUSBMonitor.getDeviceList().size() > 0)
+                    {
+                        mUSBMonitor.requestPermission(mUSBMonitor.getDeviceList().get(0));
+                        if(!spoke1) {
+                            txt2Speech.speak("Muito bem! Agora conecte a camera direita", TextToSpeech.QUEUE_ADD, null, "3");
+                            spoke1 = true;
+                        }
+                    }
+                }
 
-                else if(mCameraRight == null)
-                    mUSBMonitor.requestPermission(mUSBMonitor.getDeviceList().get(0));
+                else if(mCameraRight == null) {
+                    if(mUSBMonitor.getDeviceList().size() > 0) {
+                        mUSBMonitor.requestPermission(mUSBMonitor.getDeviceList().get(0));
+                        if(!spoke2) {
+                            txt2Speech.speak("Isso aí Henrique. Para que eu te informe tudo o que estiver a menos de 7 metros de você e também algumas pessoas conhecidas basta dizer Reconhecer", TextToSpeech.QUEUE_ADD, null, "3");
+                            spoke2 = true;
+                        }
+                    }
+                }
             }
 
             @Override
@@ -213,22 +249,40 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
         mUSBMonitor = new USBMonitor(this, mOnDeviceConnectListener);
     }
 
+    private void initText2Speech() {
+        txt2Speech = new TextToSpeech(this, this);
+    }
+
     private void initDetections() {
+        AtomicBoolean flag = new AtomicBoolean(false);
         Runnable runnableAI = () -> {
             while (true) {
-                try {
-                    if(/*canDetect*/mCameraRight != null || mCameraLeft != null) {
+               try {
+                    if(mCameraRight != null && mCameraLeft != null) {
+                        flag.set(canDetect);
+                        List<Object> l = nn.recognize(mUVCCameraViewLeft.getBitmap(), mUVCCameraViewRight.getBitmap(), canDetect);
+                        //flag.set(canDetect);
+                        imgv.setImageBitmap((Bitmap) l.get(0));
+                        imgv2.setImageBitmap((Bitmap) l.get(1));
 
-                        List<Bitmap> l = nn.recognize(mUVCCameraViewLeft.getBitmap(), mUVCCameraViewRight.getBitmap());
-                        if(l.size() > 1) {
-                            imgv.setImageBitmap(l.get(0));
-                            imgv2.setImageBitmap(l.get(1));
+                        if(/*canDetectVoice &&*/ canDetect && flag.get() && ((int) l.get(2)) > 0) {
+                            new Thread(() -> {
+                                try {
+                                    Thread.sleep(2500);
+                                    canDetect = true;
+                                }
+                                catch (Exception e) {
+
+                                }
+                            }).start();
+
+                            canDetect = false;
                         }
-                        Thread.sleep(2000);
-                        canDetect = false;
                     }
                 }
-                catch (Exception e) { Log.e("Processar itens reconhecidos", e.getMessage()); }
+                catch (Exception e) {
+                    Log.e("Processar itens reconhecidos", e.getMessage());
+                }
             }
         };
 
@@ -257,7 +311,11 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
             public void onEndOfSpeech() {}
 
             @Override
-            public void onError(int i) {}
+            public void onError(int i) {
+                speechRecognizer.destroy();
+                speechRecognizer = null;
+                initSpeechRecognizer();
+            }
 
             @Override
             public void onResults(Bundle bundle) {
@@ -271,6 +329,38 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
                         e.printStackTrace();
                     }
                 }
+                else if(text.toLowerCase().startsWith("obrigado")) {
+                    txt2Speech.speak("Imagina, estou aqui para ajudar", TextToSpeech.QUEUE_FLUSH, null, "");
+                }
+                else if(text.toLowerCase().startsWith("quem é você")) {
+                    txt2Speech.speak("Eu sou a Make Me See, e ajudo pessoas com deficiência visual a se locomoverem de uma melhor forma", TextToSpeech.QUEUE_FLUSH, null, "");
+                }
+                else if(text.toLowerCase().startsWith("quem é seu pai")) {
+                    txt2Speech.speak("Eu fui feita pelo Henrique Ricci", TextToSpeech.QUEUE_FLUSH, null, "");
+                }
+                else if(text.toLowerCase().startsWith("comente sobre o lucas veiga")) {
+                    txt2Speech.speak("Ele é o primo querido do Henrique Ricci", TextToSpeech.QUEUE_FLUSH, null, "");
+                }
+                else if(text.toLowerCase().startsWith("reconhecer")) {
+                    if(mCameraLeft == null && mCameraRight == null) {
+                        txt2Speech.speak("Você ainda não conectou nenhuma camera", TextToSpeech.QUEUE_FLUSH, null, "");
+                    }
+                    else if(mCameraLeft == null) {
+                        txt2Speech.speak("Ops, parece que voce ainda não conectou a camera esquerda", TextToSpeech.QUEUE_FLUSH, null, "");
+                    }
+                    else if(mCameraRight == null) {
+                        txt2Speech.speak("Ops, parece que voce ainda não conectou a camera direira", TextToSpeech.QUEUE_FLUSH, null, "");
+                    }
+                    else {
+                        txt2Speech.speak("Ok", TextToSpeech.QUEUE_FLUSH, null, "");
+                        canDetectVoice = true;
+                    }
+                }
+                else if(text.toLowerCase().startsWith("parar reconhecimento")) {
+                    canDetectVoice = false;
+                    txt2Speech.speak("Ok", TextToSpeech.QUEUE_FLUSH, null, "");
+                }
+                initSpeechRecognizer();
             }
 
             @Override
@@ -287,8 +377,11 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
         sensorManager = (SensorManager)getSystemService(SENSOR_SERVICE);
         sensorStep = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mAccel = 0.00f;
-        mAccelCurrent = SensorManager.GRAVITY_EARTH;
-        mAccelLast = SensorManager.GRAVITY_EARTH;
+        sensorManager.registerListener(this, sensorGravity,
+                SensorManager.SENSOR_DELAY_NORMAL);
+
+        /*sensorManager = (SensorManager)getSystemService(SENSOR_SERVICE);
+        sensorStep = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);*/
     }
 
     private void initViews() {
@@ -467,26 +560,29 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
     @Override
     public void onSurfaceDestroy(CameraViewInterface view, Surface surface) {}
 
+    protected float[] lowPassFilter( float[] input, float[] output ) {
+        if ( output == null ) return input;
+        for ( int i=0; i<input.length; i++ ) {
+            output[i] = output[i] + 1.0f * (input[i] - output[i]);
+        }
+        return output;
+    }
+
     @Override
     public void onSensorChanged(SensorEvent event) {
-            if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER){
-                mGravity = event.values.clone();
-                // Shake detection
-                float x = mGravity[0];
-                float y = mGravity[1];
-                float z = mGravity[2];
-                mAccelLast = mAccelCurrent;
-                mAccelCurrent = (float) Math.sqrt(x*x + y*y + z*z);
-                float delta = mAccelCurrent - mAccelLast;
-                mAccel = mAccel * 0.9f + delta;
-                // Make this higher or lower according to how much
-                // motion you want to detect
-                if(mAccel > 1){
-                    /*Vibrator v = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
-                    v.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE));*/
+            /*if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER){
+
+                smoothed = lowPassFilter(event.values, gravity);
+                gravity[0] = smoothed[0];
+                gravity[1] = smoothed[1];
+                gravity[2] = smoothed[2];
+
+                if((Math.abs(prevY - gravity[1]) > 1) && !canDetect){
+                    stepCount++;
                     canDetect = true;
                 }
-            }
+                prevY = gravity[1];
+            }*/
     }
 
     @Override
@@ -500,6 +596,26 @@ public class USBCameraActivity extends AppCompatActivity implements CameraDialog
             JSONArray mat = reader.getJSONArray("matrix");
         } catch (JSONException e) {
             e.printStackTrace();
+        }
+    }
+
+    @Override
+    public void onInit(int i) {
+        if (i == TextToSpeech.SUCCESS) {
+            //Setting speech Language
+            int result = txt2Speech.setLanguage(Locale.getDefault());
+            if(result==TextToSpeech.LANG_MISSING_DATA ||
+                    result==TextToSpeech.LANG_NOT_SUPPORTED){
+                Log.e("error", "This Language is not supported");
+            }
+            txt2Speech.setLanguage(Locale.getDefault());
+            txt2Speech.setSpeechRate(2.9f);
+            DecimalFormat decimalFormat = new DecimalFormat("#,#0.0");
+            decimalFormat.setRoundingMode(RoundingMode.DOWN);
+            txt2Speech.speak("Olá. Já estou pronta e podemos começar. Primeiro, conecte a camera esquerda", TextToSpeech.QUEUE_ADD, null, "1");
+        }
+        else {
+
         }
     }
 }

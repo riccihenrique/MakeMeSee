@@ -62,6 +62,6 @@ public class Obstacle {
     public String toString() {
         DecimalFormat decimalFormat = new DecimalFormat("#,#0.0");
         decimalFormat.setRoundingMode(RoundingMode.DOWN);
-        return description.equals("pessoa") ? (!name.equals("") ? name : "Alguém") + " está se aproximando" : description + " a " + decimalFormat.format(distance) + " metros";
+        return description.equals("pessoa") ? (!name.equals("") ? name : "Alguém") + " está se aproximando" : (distance == 0 ? description + " a frente." : description + " a " + decimalFormat.format(distance - 3.4) + " metros.");
     }
 }
